@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: bafna-second-brain-bot
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: GITHUB_REPO
+        value: chanderbafna-dotapp/bafna-second-brain
