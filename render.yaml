@@ -3,7 +3,7 @@ services:
     name: bafna-second-brain-bot
     env: python
     buildCommand: apt-get install -y poppler-utils && pip install -r requirements.txt
-    startCommand: gunicorn app:app
+    startCommand: gunicorn app:app -c gunicorn.conf.py
     envVars:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
