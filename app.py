@@ -110,52 +110,35 @@ def claude_summarise_pdf(pdf_text, doc_name):
 
 def generate_clinical_infographic(title, summary, doc_type="PDF Summary"):
     try:
-        W = 900
-        margin = 30
-        BG = "#ffffff"
-        HDR_BG = "#1a237e"
-        HDR_TEXT = "#ffffff"
-        TITLE_BG = "#e8eaf6"
-        TITLE_TEXT = "#1a237e"
-        BLACK = "#111111"
-        SUBTEXT = "#444444"
-        FOOTER_BG = "#f5f5f5"
+        W, H = 900, 1100
+        BG = "#0d1b2a"
+        HDR = "#e63946"
+        SECTION_BG = "#16213e"
+        TEXT = "#f1faee"
+        SUBTEXT = "#a8dadc"
+        ACCENT = "#457b9d"
 
-        section_styles = [
-            ("#e8f5e9", "#2e7d32", "#1b5e20"),
-            ("#e3f2fd", "#1565c0", "#0d47a1"),
-            ("#f3e5f5", "#6a1b9a", "#4a148c"),
-            ("#fff3e0", "#e65100", "#bf360c"),
-            ("#e0f7fa", "#00695c", "#004d40"),
-            ("#fce4ec", "#ad1457", "#880e4f"),
-        ]
+        img = Image.new("RGB", (W, H), color=BG)
+        draw = ImageDraw.Draw(img)
 
         try:
             font_large = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 26)
-            font_medium = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 19)
-            font_body = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 16)
-            font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 13)
+            font_medium = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 20)
+            font_body = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 17)
+            font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
         except:
             font_large = font_medium = font_body = font_small = ImageFont.load_default()
 
-        tmp = Image.new("RGB", (W, 100))
-        tmp_draw = ImageDraw.Draw(tmp)
+        draw.rectangle([0, 0, W, 80], fill=HDR)
+        draw.text((30, 15), "BAFNA SECOND BRAIN", fill="white", font=font_large)
+        draw.text((30, 50), doc_type + "  |  " + datetime.now().strftime("%d %b %Y") + "  |  Powered by Claude AI", fill="#ffccd5", font=font_small)
 
-        def wrap(text, font, max_w):
-            words = str(text).split()
-            lines, line = [], ""
-            for w in words:
-                test = (line + " " + w).strip()
-                bbox = tmp_draw.textbbox((0, 0), test, font=font)
-                if bbox[2] - bbox[0] <= max_w:
-                    line = test
-                else:
-                    if line:
-                        lines.append(line)
-                    line = w
-            if line:
-                lines.append(line)
-            return lines
+        y = 95
+        margin = 30
+
+        draw.rectangle([0, y, W, y + 50], fill="#1d3557")
+        draw.text((margin, y + 12), title[:80], fill=SUBTEXT, font=font_medium)
+        y += 60
 
         sections = []
         current_section = ""
@@ -173,49 +156,29 @@ def generate_clinical_infographic(title, summary, doc_type="PDF Summary"):
                 current_text.append(line)
         if current_section and current_text:
             sections.append((current_section, " ".join(current_text)))
+
         if not sections:
             sections = [("CLINICAL SUMMARY", summary[:800])]
 
-        inner_w = W - margin * 2 - 16
-
-        H = 90
-        title_lines = wrap(title, font_medium, inner_w)
-        H += 20 + len(title_lines) * 26 + 16
-        for i, (st, sx) in enumerate(sections[:6]):
-            sl = wrap(sx, font_body, inner_w - 12)
-            H += 44 + len(sl[:5]) * 22 + 14
-        H += 50
-
-        img = Image.new("RGB", (W, H), color=BG)
-        draw = ImageDraw.Draw(img)
-
-        draw.rectangle([0, 0, W, 90], fill=HDR_BG)
-        draw.text((margin, 14), "BAFNA SECOND BRAIN", fill=HDR_TEXT, font=font_large)
-        draw.text((margin, 50), doc_type + "  •  " + datetime.now().strftime("%d %b %Y") + "  •  Claude AI", fill="#c5cae9", font=font_small)
-
-        y = 90
-
-        draw.rectangle([0, y, W, y + 20 + len(title_lines) * 26 + 16], fill=TITLE_BG)
-        draw.rectangle([0, y, 5, y + 20 + len(title_lines) * 26 + 16], fill=HDR_BG)
-        for i, tl in enumerate(title_lines):
-            draw.text((margin, y + 10 + i * 26), tl, fill=TITLE_TEXT, font=font_medium)
-        y += 20 + len(title_lines) * 26 + 16
+        colors = ["#1a472a", "#1d3557", "#3d1a47", "#47261a", "#1a3947"]
+        accent_colors = ["#2dc653", "#457b9d", "#9b59b6", "#e67e22", "#1abc9c"]
 
         for i, (section_title, section_text) in enumerate(sections[:6]):
-            bg_c, acc_c, dark_c = section_styles[i % len(section_styles)]
-            body_lines = wrap(section_text, font_body, inner_w - 12)
-            sec_h = 44 + len(body_lines[:5]) * 22 + 14
+            bg_c = colors[i % len(colors)]
+            acc_c = accent_colors[i % len(accent_colors)]
+            wrapped = textwrap.wrap(section_text, width=70)
+            sec_h = 45 + len(wrapped[:4]) * 24 + 15
+            if y + sec_h > H - 60:
+                break
             draw.rectangle([0, y, W, y + sec_h], fill=bg_c)
-            draw.rectangle([0, y, 5, y + sec_h], fill=acc_c)
-            draw.rectangle([0, y + sec_h - 1, W, y + sec_h], fill="#e0e0e0")
-            draw.text((margin, y + 10), section_title[:60], fill=dark_c, font=font_medium)
-            for j, wline in enumerate(body_lines[:5]):
-                draw.text((margin + 10, y + 36 + j * 22), wline, fill=BLACK, font=font_body)
-            y += sec_h
+            draw.rectangle([0, y, 6, y + sec_h], fill=acc_c)
+            draw.text((margin, y + 10), section_title[:60], fill=acc_c, font=font_medium)
+            for j, wline in enumerate(wrapped[:4]):
+                draw.text((margin + 10, y + 35 + j * 24), wline, fill=TEXT, font=font_body)
+            y += sec_h + 5
 
-        draw.rectangle([0, y, W, H], fill=FOOTER_BG)
-        draw.rectangle([0, y, W, y + 1], fill="#e0e0e0")
-        draw.text((margin, y + 14), "For educational use only • Verify with primary sources • Open Obsidian to process", fill=SUBTEXT, font=font_small)
+        draw.rectangle([0, H - 50, W, H], fill="#1d3557")
+        draw.text((margin, H - 35), "For educational use only. Verify with primary sources. Open Obsidian to process.", fill=SUBTEXT, font=font_small)
 
         img_bytes = io.BytesIO()
         img.save(img_bytes, format="PNG")
