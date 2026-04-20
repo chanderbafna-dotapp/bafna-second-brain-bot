@@ -2,7 +2,7 @@ services:
   - type: web
     name: bafna-second-brain-bot
     env: python
-    buildCommand: pip install -r requirements.txt
+    buildCommand: apt-get install -y poppler-utils && pip install -r requirements.txt
     startCommand: gunicorn app:app
     envVars:
       - key: TELEGRAM_BOT_TOKEN
