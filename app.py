@@ -91,6 +91,14 @@ def claude_classify_text(text):
     except:
         return None
 
+def clean_markdown(text):
+    import re
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
+    text = re.sub(r"\*(.+?)\*", r"\1", text)
+    text = re.sub(r"#{1,6}\s*", "", text)
+    text = re.sub(r"_{1,2}(.+?)_{1,2}", r"\1", text)
+    return text.strip()
+
 def claude_summarise_pdf(pdf_text, doc_name):
     headers = {
         "Authorization": f"Bearer {OPENROUTER_KEY}",
@@ -110,35 +118,55 @@ def claude_summarise_pdf(pdf_text, doc_name):
 
 def generate_clinical_infographic(title, summary, doc_type="PDF Summary"):
     try:
-        W, H = 900, 1100
-        BG = "#0d1b2a"
-        HDR = "#e63946"
-        SECTION_BG = "#16213e"
-        TEXT = "#f1faee"
-        SUBTEXT = "#a8dadc"
-        ACCENT = "#457b9d"
+        W = 900
+        margin = 28
 
-        img = Image.new("RGB", (W, H), color=BG)
-        draw = ImageDraw.Draw(img)
+        BG          = "#FAFAFA"
+        HDR_BG      = "#1565C0"
+        HDR_TEXT    = "#FFFFFF"
+        HDR_SUB     = "#BBDEFB"
+        TITLE_BG    = "#E3F2FD"
+        TITLE_BORDER= "#1565C0"
+        TITLE_TEXT  = "#0D47A1"
+        BLACK       = "#212121"
+        DIVIDER     = "#E0E0E0"
+        FOOTER_BG   = "#F5F5F5"
+        FOOTER_TEXT = "#757575"
+
+        section_styles = [
+            ("#E8F5E9", "#43A047", "#1B5E20"),
+            ("#E3F2FD", "#1E88E5", "#0D47A1"),
+            ("#F3E5F5", "#8E24AA", "#4A148C"),
+            ("#FFF3E0", "#FB8C00", "#E65100"),
+            ("#E0F7FA", "#00ACC1", "#006064"),
+            ("#FCE4EC", "#E91E63", "#880E4F"),
+        ]
 
         try:
-            font_large = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 26)
-            font_medium = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 20)
-            font_body = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 17)
-            font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
+            font_hdr   = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 24)
+            font_sub   = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 13)
+            font_label = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 16)
+            font_body  = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 15)
+            font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 12)
         except:
-            font_large = font_medium = font_body = font_small = ImageFont.load_default()
+            font_hdr = font_sub = font_label = font_body = font_small = ImageFont.load_default()
 
-        draw.rectangle([0, 0, W, 80], fill=HDR)
-        draw.text((30, 15), "BAFNA SECOND BRAIN", fill="white", font=font_large)
-        draw.text((30, 50), doc_type + "  |  " + datetime.now().strftime("%d %b %Y") + "  |  Powered by Claude AI", fill="#ffccd5", font=font_small)
+        tmp = Image.new("RGB", (W, 10))
+        tmp_d = ImageDraw.Draw(tmp)
 
-        y = 95
-        margin = 30
-
-        draw.rectangle([0, y, W, y + 50], fill="#1d3557")
-        draw.text((margin, y + 12), title[:80], fill=SUBTEXT, font=font_medium)
-        y += 60
+        def wrap(text, font, max_w):
+            words = str(text).split()
+            lines, line = [], ""
+            for w in words:
+                test = (line + " " + w).strip()
+                bbox = tmp_d.textbbox((0,0), test, font=font)
+                if bbox[2] - bbox[0] <= max_w:
+                    line = test
+                else:
+                    if line: lines.append(line)
+                    line = w
+            if line: lines.append(line)
+            return lines
 
         sections = []
         current_section = ""
@@ -147,46 +175,70 @@ def generate_clinical_infographic(title, summary, doc_type="PDF Summary"):
             line = line.strip()
             if not line:
                 continue
-            if line.startswith(("1.", "2.", "3.", "4.", "5.")) or line.isupper() or line.endswith(":"):
+            if line.startswith(("1.", "2.", "3.", "4.", "5.", "6.", "7.")) or (line.isupper() and len(line) > 3) or (line.endswith(":") and len(line) < 50):
                 if current_section and current_text:
-                    sections.append((current_section, " ".join(current_text)))
-                current_section = line
+                    sections.append((current_section.rstrip(":"), " ".join(current_text)))
+                current_section = line.rstrip(":")
                 current_text = []
             else:
                 current_text.append(line)
         if current_section and current_text:
-            sections.append((current_section, " ".join(current_text)))
-
+            sections.append((current_section.rstrip(":"), " ".join(current_text)))
         if not sections:
-            sections = [("CLINICAL SUMMARY", summary[:800])]
+            chunks = [summary[i:i+250] for i in range(0, min(len(summary), 1500), 250)]
+            sections = [(f"Key Point {i+1}", c) for i, c in enumerate(chunks[:6])]
 
-        colors = ["#1a472a", "#1d3557", "#3d1a47", "#47261a", "#1a3947"]
-        accent_colors = ["#2dc653", "#457b9d", "#9b59b6", "#e67e22", "#1abc9c"]
+        inner_w = W - margin * 2 - 16
+
+        H = 88
+        title_lines = wrap(title, font_label, inner_w - 10)
+        H += 16 + len(title_lines) * 24 + 14
+        for st, sx in sections[:6]:
+            sl = wrap(sx, font_body, inner_w - 14)
+            H += 40 + min(len(sl), 5) * 21 + 12
+        H += 44
+
+        img = Image.new("RGB", (W, H), color=BG)
+        draw = ImageDraw.Draw(img)
+
+        draw.rectangle([0, 0, W, 88], fill=HDR_BG)
+        draw.text((margin, 16), "BAFNA SECOND BRAIN", fill=HDR_TEXT, font=font_hdr)
+        draw.text((margin, 52), doc_type + "  •  " + datetime.now().strftime("%d %b %Y") + "  •  Powered by Claude AI", fill=HDR_SUB, font=font_sub)
+
+        y = 88
+
+        t_h = 16 + len(title_lines) * 24 + 14
+        draw.rectangle([0, y, W, y + t_h], fill=TITLE_BG)
+        draw.rectangle([0, y, 5, y + t_h], fill=TITLE_BORDER)
+        for i, tl in enumerate(title_lines):
+            draw.text((margin, y + 8 + i * 24), tl, fill=TITLE_TEXT, font=font_label)
+        y += t_h
+        draw.line([(0, y), (W, y)], fill=DIVIDER, width=1)
 
         for i, (section_title, section_text) in enumerate(sections[:6]):
-            bg_c = colors[i % len(colors)]
-            acc_c = accent_colors[i % len(accent_colors)]
-            wrapped = textwrap.wrap(section_text, width=70)
-            sec_h = 45 + len(wrapped[:4]) * 24 + 15
-            if y + sec_h > H - 60:
-                break
+            bg_c, acc_c, dark_c = section_styles[i % len(section_styles)]
+            body_lines = wrap(section_text, font_body, inner_w - 14)
+            sec_h = 40 + min(len(body_lines), 5) * 21 + 12
             draw.rectangle([0, y, W, y + sec_h], fill=bg_c)
-            draw.rectangle([0, y, 6, y + sec_h], fill=acc_c)
-            draw.text((margin, y + 10), section_title[:60], fill=acc_c, font=font_medium)
-            for j, wline in enumerate(wrapped[:4]):
-                draw.text((margin + 10, y + 35 + j * 24), wline, fill=TEXT, font=font_body)
-            y += sec_h + 5
+            draw.rectangle([0, y, 5, y + sec_h], fill=acc_c)
+            draw.text((margin, y + 10), section_title[:55], fill=dark_c, font=font_label)
+            for j, wline in enumerate(body_lines[:5]):
+                draw.text((margin + 10, y + 32 + j * 21), wline, fill=BLACK, font=font_body)
+            y += sec_h
+            draw.line([(0, y), (W, y)], fill=DIVIDER, width=1)
 
-        draw.rectangle([0, H - 50, W, H], fill="#1d3557")
-        draw.text((margin, H - 35), "For educational use only. Verify with primary sources. Open Obsidian to process.", fill=SUBTEXT, font=font_small)
+        draw.rectangle([0, y, W, H], fill=FOOTER_BG)
+        draw.text((margin, y + 14), "For educational use only  •  Verify with primary sources  •  Open Obsidian to process", fill=FOOTER_TEXT, font=font_small)
 
-        img_bytes = io.BytesIO()
-        img.save(img_bytes, format="PNG")
-        img_bytes.seek(0)
-        return img_bytes
+        buf = io.BytesIO()
+        img.save(buf, format="PNG", quality=95)
+        buf.seek(0)
+        return buf
     except Exception as e:
+        import traceback; traceback.print_exc()
         print(f"Infographic error: {e}")
         return None
+
 
 def process_text_message(text, chat_id):
     tg_send(chat_id, "Processing message...")
@@ -247,7 +299,7 @@ def process_pdf_message(document, chat_id):
     note_filename = re.sub(r"[^a-zA-Z0-9_-]", "_", doc_name) + f"_{timestamp}.md"
     note = "---\ntitle: " + doc_name + "\ntype: pdf-summary\nstatus: unprocessed\ndate_added: " + date_str + "\nsource: Telegram Bot\ntags: [raw, unprocessed, telegram, pdf]\n---\n\n# " + doc_name + "\n\n## Clinical Summary\n" + clinical_summary + "\n\n## Source Document\n![[Assets/" + safe_name + "]]\n\n## Next action\n- [ ] Review summary accuracy\n- [ ] Run Cmd+Shift+G for full guideline extraction\n- [ ] Move to Literature/ after review\n"
     github_commit(note_filename, "raw", note, f"PDF summary: {doc_name}")
-    img_bytes = generate_clinical_infographic(doc_name, clinical_summary, "PDF Summary")
+    img_bytes = generate_clinical_infographic(doc_name, clean_markdown(clinical_summary), "PDF Summary")
     if img_bytes:
         tg_send_photo(chat_id, img_bytes, caption=f"Clinical Summary: {doc_name}")
     tg_send(chat_id, "PDF Processed\n\nFile: " + safe_name + "\nPDF saved to Assets/\nNote saved to raw/" + note_filename + "\n\nOpen Obsidian and run Cmd+Shift+G for full extraction.")
