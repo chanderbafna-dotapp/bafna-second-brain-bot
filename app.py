@@ -75,11 +75,11 @@ def claude_classify_text(text):
         "Authorization": f"Bearer {OPENROUTER_KEY}",
         "Content-Type": "application/json"
     }
-    prompt = "You are a clinical assistant for Dr. Chander Bafna, diabetologist in Raipur, India.\n\nAnalyse this message from a doctors group:\n\n" + text + "\n\nRespond in this exact JSON format only:\n{\n  \"title\": \"concise title max 8 words\",\n  \"folder\": \"raw\",\n  \"tags\": [\"tag1\", \"tag2\"],\n  \"summary\": \"2 sentence clinical summary\",\n  \"clinical_relevance\": \"one sentence relevance to T2DM practice in India\",\n  \"verify_needed\": false\n}\n\nJSON only."
+    prompt = "You are a clinical assistant for Dr. Chander Bafna, diabetologist in Raipur, India.\n\nAnalyse this message from a doctors group:\n\n" + text + "\n\nRespond in this exact JSON format only:\n{\n  \"title\": \"concise title max 8 words\",\n  \"folder\": \"raw\",\n  \"tags\": [\"tag1\", \"tag2\"],\n  \"summary\": \"3-4 sentences with key numbers and effect sizes\",\n  \"clinical_relevance\": \"2 sentences on relevance to T2DM/CKD practice in Raipur India\",\n  \"mechanism\": \"1-2 sentences on mechanism or pathophysiology\",\n  \"key_recommendation\": \"specific actionable OPD recommendation\",\n  \"caveats\": \"key limitations or contraindications\",\n  \"verify_needed\": false\n}\n\nJSON only."
     payload = {
         "model": "anthropic/claude-sonnet-4-5",
         "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 600
+        "max_tokens": 900
     }
     resp = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=30)
     data = resp.json()
