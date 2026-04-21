@@ -84,11 +84,20 @@ def claude_classify_text(text):
     resp = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=30)
     data = resp.json()
     if "choices" not in data:
+        print(f"Claude error: {data}")
         return None
     import json
+    raw = data["choices"][0]["message"]["content"]
+    print(f"Claude raw response: {raw[:300]}")
     try:
-        return json.loads(data["choices"][0]["message"]["content"])
-    except:
+        raw = raw.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        return json.loads(raw.strip())
+    except Exception as e:
+        print(f"JSON parse error: {e}")
         return None
 
 def clean_markdown(text):
