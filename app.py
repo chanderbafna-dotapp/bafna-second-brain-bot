@@ -281,7 +281,15 @@ def process_text_message(text, chat_id):
     filename = re.sub(r"[^a-z0-9]+", "-", title.lower())[:50] + f"-{timestamp}.md"
     note = "---\ntitle: " + title + "\ndate: " + date_str + "\nsource: Telegram Doctors Group\ntags: [" + ", ".join(tags) + "]\nstatus: unprocessed\n---\n\n## Summary\n" + summary + "\n\n## Clinical relevance\n" + relevance + "\n\n## Original message\n" + text + "\n\n## Next action\n- [ ] Run Cmd+Shift+R for trials or Cmd+Shift+G for guidelines\n- [ ] Move to correct folder after review\n"
     success = github_commit(filename, folder, note, f"Telegram clip: {title}")
-    img_bytes = generate_clinical_infographic(title, summary + "\n\nClinical Relevance:\n" + relevance, "Text Message")
+    mechanism = parsed.get("mechanism", "") if parsed else ""
+    key_rec = parsed.get("key_recommendation", "") if parsed else ""
+    caveats = parsed.get("caveats", "") if parsed else ""
+    rich_summary = "SUMMARY\n" + summary
+    if mechanism: rich_summary += "\nMECHANISM\n" + mechanism
+    if relevance: rich_summary += "\nCLINICAL RELEVANCE\n" + relevance
+    if key_rec: rich_summary += "\nOPD RECOMMENDATION\n" + key_rec
+    if caveats: rich_summary += "\nCAVEATS\n" + caveats
+    img_bytes = generate_clinical_infographic(title, rich_summary, "Text Message")
     if img_bytes:
         tg_send_photo(chat_id, img_bytes, caption=f"Clinical Summary: {title}")
     if success:
