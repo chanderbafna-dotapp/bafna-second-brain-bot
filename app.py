@@ -132,6 +132,7 @@ def generate_clinical_infographic(title, summary, doc_type="PDF Summary"):
         DIVIDER     = "#E0E0E0"
         FOOTER_BG   = "#F5F5F5"
         FOOTER_TEXT = "#757575"
+        BULLET      = "#424242"
 
         section_styles = [
             ("#E8F5E9", "#43A047", "#1B5E20"),
@@ -168,6 +169,20 @@ def generate_clinical_infographic(title, summary, doc_type="PDF Summary"):
             if line: lines.append(line)
             return lines
 
+        def text_to_bullets(text):
+            """Convert paragraph text to bullet points."""
+            import re
+            text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
+            text = re.sub(r"\*(.+?)\*", r"\1", text)
+            text = re.sub(r"#{1,6}\s*", "", text)
+            sentences = re.split(r"(?<=[.!?])\s+|\s*[-•]\s*", text)
+            bullets = []
+            for s in sentences:
+                s = s.strip().strip(".")
+                if len(s) > 15:
+                    bullets.append(s)
+            return bullets[:5]
+
         sections = []
         current_section = ""
         current_text = []
@@ -194,8 +209,8 @@ def generate_clinical_infographic(title, summary, doc_type="PDF Summary"):
         title_lines = wrap(title, font_label, inner_w - 10)
         H += 16 + len(title_lines) * 24 + 14
         for st, sx in sections[:6]:
-            sl = wrap(sx, font_body, inner_w - 14)
-            H += 40 + min(len(sl), 5) * 21 + 12
+            bullets = text_to_bullets(sx)
+            H += 36 + len(bullets) * 22 + 10
         H += 44
 
         img = Image.new("RGB", (W, H), color=BG)
@@ -217,13 +232,19 @@ def generate_clinical_infographic(title, summary, doc_type="PDF Summary"):
 
         for i, (section_title, section_text) in enumerate(sections[:6]):
             bg_c, acc_c, dark_c = section_styles[i % len(section_styles)]
-            body_lines = wrap(section_text, font_body, inner_w - 14)
-            sec_h = 40 + min(len(body_lines), 5) * 21 + 12
+            bullets = text_to_bullets(section_text)
+            if not bullets:
+                bullets = [section_text[:100]]
+            sec_h = 36 + len(bullets) * 22 + 10
             draw.rectangle([0, y, W, y + sec_h], fill=bg_c)
             draw.rectangle([0, y, 5, y + sec_h], fill=acc_c)
-            draw.text((margin, y + 10), section_title[:55], fill=dark_c, font=font_label)
-            for j, wline in enumerate(body_lines[:5]):
-                draw.text((margin + 10, y + 32 + j * 21), wline, fill=BLACK, font=font_body)
+            draw.text((margin, y + 8), section_title[:55], fill=dark_c, font=font_label)
+            for j, bullet in enumerate(bullets):
+                bx = margin + 10
+                by = y + 30 + j * 22
+                draw.ellipse([bx, by + 5, bx + 7, by + 12], fill=acc_c)
+                bullet_lines = wrap(bullet, font_body, inner_w - 30)
+                draw.text((bx + 14, by), bullet_lines[0] if bullet_lines else bullet[:80], fill=BLACK, font=font_body)
             y += sec_h
             draw.line([(0, y), (W, y)], fill=DIVIDER, width=1)
 
