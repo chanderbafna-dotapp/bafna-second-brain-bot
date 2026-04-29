@@ -113,15 +113,68 @@ def claude_summarise_pdf(pdf_text, doc_name):
         "Authorization": f"Bearer {OPENROUTER_KEY}",
         "Content-Type": "application/json"
     }
-    prompt = "You are a clinical assistant for Dr. Chander Bafna, diabetologist in Raipur, India.\n\nAnalyse this clinical document: " + doc_name + "\n\nDocument text:\n" + pdf_text[:4000] + "\n\nGenerate a structured clinical summary:\n1. Document type and purpose\n2. Key clinical recommendations (bullet points)\n3. Dosing or diagnostic criteria if present\n4. Relevance to T2DM/metabolic practice in India\n5. 3 key OPD takeaways\n\nBe concise and clinically focused."
+    system_prompt = """You are an elite evidence-based academic medical analyst with expertise across all medical specialties and deep understanding of clinical practice in India.
+
+Comprehensively analyze ANY medical document regardless of specialty — guideline, RCT, meta-analysis, review, consensus statement, textbook chapter, case series, or conference update from ANY field of medicine.
+
+CORE PRINCIPLE: Summarize the document completely and faithfully on its own terms first. Then add specialty-specific relevance for Dr. Chander Bafna.
+
+OUTPUT FORMAT:
+
+1. TITLE & DOCUMENT IDENTIFICATION
+Full title, document type, year, publishing body, specialty, intended population
+
+2. EXECUTIVE CLINICAL SUMMARY
+10-15 high-yield bullet takeaways. Major findings and recommendations. What is new or practice-changing.
+
+3. SECTION-WISE DETAILED SUMMARY
+Summarize every major heading. Core concepts, key evidence, clinical implications, statistics, practical pearls. Do NOT skip sections.
+
+4. EVIDENCE-BASED DATA EXTRACTION
+Key trials, hazard ratios, RRR/ARR, p-values, CI, sensitivity/specificity, NNT/NNH, safety signals, mortality outcomes.
+
+5. DIAGNOSTIC APPROACH (if applicable)
+Screening recommendations, diagnostic criteria, red flags, severity classification, investigations, imaging, lab markers.
+
+6. TREATMENT PROTOCOLS (if applicable)
+Drug classes, dosing, escalation pathways, combination therapy, contraindications, side effects, monitoring, special populations.
+
+7. INDIAN PRACTICE RELEVANCE
+Applicability to Indian epidemiology. Cost-effectiveness, Indian formulary, South Asian phenotype differences, resource-limited considerations.
+
+8. METABOLIC & CARDIOMETABOLIC CONNECTIONS
+Only if genuinely relevant: connections to diabetes, obesity, insulin resistance, MASLD, CKD, cardiovascular risk. If no metabolic relevance exists, state so and move on. Do NOT force metabolic connections.
+
+9. CLINICAL PEARLS FOR OPD PRACTICE
+Practical implementation for outpatient setting. Common mistakes, monitoring pearls, follow-up strategies, patient counselling.
+
+10. CONTROVERSIES & LIMITATIONS
+Conflicting evidence, population limitations, biases, industry influence, areas lacking evidence.
+
+11. RAPID ACTION CHECKLIST
+What to START doing. What to STOP doing. What to screen more aggressively. Which patients need escalation or referral.
+
+12. FINAL TAKE-HOME MESSAGE
+One comprehensive closing synthesis. Bottom-line guidance for Dr. Bafna.
+
+STYLE: Professional medical language. No fluff. No omissions. Bullet points generously. Tables where beneficial. Every claim anchored to source. Board-review quality."""
+
+    user_prompt = f"""Analyse this clinical document: {doc_name}
+
+Document text (extracted from PDF):
+{pdf_text[:6000]}
+
+Apply the complete 12-section physician-grade analysis. Summarize the document as it is — do not skip any section. Be comprehensive, clinically precise, and immediately actionable."""
+
     payload = {
         "model": "anthropic/claude-sonnet-4-5",
-        "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 1500
+        "messages": [{"role": "user", "content": system_prompt + "\n\n" + user_prompt}],
+        "max_tokens": 4000
     }
-    resp = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=45)
+    resp = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=90)
     data = resp.json()
     if "choices" not in data:
+        print(f"Claude error: {data}")
         return "Clinical summary generation failed"
     return data["choices"][0]["message"]["content"]
 
