@@ -125,149 +125,172 @@ def claude_summarise_pdf(pdf_text, doc_name):
         return "Clinical summary generation failed"
     return data["choices"][0]["message"]["content"]
 
+def parse_sections(summary_text):
+    """Parse markdown summary into named sections."""
+    import re
+    sections = {}
+    current_section = "intro"
+    current_lines = []
+    
+    for line in summary_text.split("\n"):
+        # Match numbered headings like "1. TITLE" or "## TITLE"
+        match = re.match(r"^(?:\d+\.\s+|#{1,3}\s+)(.+)", line.strip())
+        if match:
+            if current_lines:
+                sections[current_section] = "\n".join(current_lines).strip()
+            current_section = match.group(1).strip().upper()[:40]
+            current_lines = []
+        else:
+            current_lines.append(line)
+    
+    if current_lines:
+        sections[current_section] = "\n".join(current_lines).strip()
+    
+    return sections
+
+def render_text_panel(draw, text, font, x, y, max_width, max_y, line_height=20):
+    """Render text with word wrap, returns final y position."""
+    import re
+    # Clean markdown
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
+    text = re.sub(r"\*(.+?)\*", r"\1", text)
+    text = re.sub(r"#{1,6}\s*", "", text)
+    
+    for line in text.split("\n"):
+        if y > max_y:
+            break
+        line = line.strip()
+        if not line:
+            y += line_height // 2
+            continue
+        
+        # Word wrap
+        words = line.split()
+        current = ""
+        for word in words:
+            test = (current + " " + word).strip()
+            bbox = draw.textbbox((0, 0), test, font=font)
+            if bbox[2] - bbox[0] <= max_width:
+                current = test
+            else:
+                if current:
+                    draw.text((x, y), current, fill="#0A0A0A", font=font)
+                    y += line_height
+                current = word
+        if current and y <= max_y:
+            draw.text((x, y), current, fill="#0A0A0A", font=font)
+            y += line_height
+    
+    return y
+
 def generate_clinical_infographic(title, summary, doc_type="PDF Summary"):
+    """Generate 3 clean black/white PNG panels from clinical summary."""
     try:
+        from PIL import Image, ImageDraw, ImageFont
+        import io, re
+        from datetime import datetime
+
         W = 900
-        margin = 28
+        MARGIN = 44
+        INNER_W = W - MARGIN * 2
+        BG = "#FFFFFF"
+        INK = "#0A0A0A"
+        GRAY = "#555555"
+        LIGHT = "#F5F5F5"
+        RULE = "#CCCCCC"
 
-        BG          = "#FAFAFA"
-        HDR_BG      = "#1565C0"
-        HDR_TEXT    = "#FFFFFF"
-        HDR_SUB     = "#BBDEFB"
-        TITLE_BG    = "#E3F2FD"
-        TITLE_BORDER= "#1565C0"
-        TITLE_TEXT  = "#0D47A1"
-        BLACK       = "#212121"
-        DIVIDER     = "#E0E0E0"
-        FOOTER_BG   = "#F5F5F5"
-        FOOTER_TEXT = "#757575"
-        BULLET      = "#424242"
+        def get_font(size, bold=False):
+            try:
+                path = "/usr/share/fonts/truetype/dejavu/"
+                fname = "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
+                return ImageFont.truetype(path + fname, size)
+            except:
+                return ImageFont.load_default()
 
-        section_styles = [
-            ("#E8F5E9", "#43A047", "#1B5E20"),
-            ("#E3F2FD", "#1E88E5", "#0D47A1"),
-            ("#F3E5F5", "#8E24AA", "#4A148C"),
-            ("#FFF3E0", "#FB8C00", "#E65100"),
-            ("#E0F7FA", "#00ACC1", "#006064"),
-            ("#FCE4EC", "#E91E63", "#880E4F"),
+        f_title  = get_font(22, bold=True)
+        f_h2     = get_font(14, bold=True)
+        f_body   = get_font(13)
+        f_small  = get_font(11)
+        f_mono   = get_font(11)
+        f_eyebrow= get_font(10)
+
+        date_str = datetime.now().strftime("%d %b %Y")
+
+        # Parse sections from summary
+        sections = parse_sections(summary)
+        section_keys = list(sections.keys())
+
+        def make_panel(panel_num, section_slice, panel_title):
+            """Create one panel image."""
+            # Estimate height
+            H = 120  # header
+            for key in section_slice:
+                text = sections.get(key, "")
+                line_count = max(len(text.split("\n")), text.count(" ") // 8 + 2)
+                H += 36 + min(line_count, 25) * 18 + 16
+            H = max(H, 600) + 60  # footer
+
+            img = Image.new("RGB", (W, H), color=BG)
+            draw = ImageDraw.Draw(img)
+
+            # Header
+            draw.rectangle([0, 0, W, 4], fill=INK)
+            draw.text((MARGIN, 16), f"PANEL {panel_num}/3  —  {panel_title}", fill=GRAY, font=f_eyebrow)
+            
+            # Title (truncated)
+            title_short = title[:65] + ("..." if len(title) > 65 else "")
+            draw.text((MARGIN, 32), title_short, fill=INK, font=f_title)
+            draw.text((MARGIN, 62), f"Dr. Chander Bafna  •  Bafna Metabolic Center, Raipur  •  {date_str}", fill=GRAY, font=f_small)
+            draw.line([(MARGIN, 84), (W - MARGIN, 84)], fill=RULE, width=1)
+
+            y = 96
+
+            for key in section_slice:
+                text = sections.get(key, "").strip()
+                if not text:
+                    continue
+
+                # Section heading
+                draw.text((MARGIN, y), key, fill=INK, font=f_h2)
+                y += 22
+                draw.line([(MARGIN, y), (W - MARGIN, y)], fill=RULE, width=1)
+                y += 10
+
+                # Section body
+                y = render_text_panel(draw, text, f_body, MARGIN + 8, y, INNER_W - 8, H - 80, line_height=18)
+                y += 16
+
+            # Footer
+            draw.line([(MARGIN, H - 44), (W - MARGIN, H - 44)], fill=RULE, width=1)
+            draw.text((MARGIN, H - 30), "For licensed healthcare professionals only  •  bafnahealthcare.com", fill=GRAY, font=f_small)
+            draw.text((W - MARGIN - 120, H - 30), f"Claude AI  •  {date_str}", fill=INK, font=f_mono)
+
+            buf = io.BytesIO()
+            img.save(buf, format="PNG", quality=95)
+            buf.seek(0)
+            return buf
+
+        # Divide sections into 3 panels
+        n = len(section_keys)
+        third = max(1, n // 3)
+        
+        panel_configs = [
+            (section_keys[:third],           "IDENTITY · EXECUTIVE SUMMARY · EVIDENCE"),
+            (section_keys[third:2*third],    "DIAGNOSIS · TREATMENT · INDIAN PRACTICE"),
+            (section_keys[2*third:],         "OPD PEARLS · CONTROVERSIES · ACTION CHECKLIST"),
         ]
 
-        try:
-            font_hdr   = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 24)
-            font_sub   = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 13)
-            font_label = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 16)
-            font_body  = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 15)
-            font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 12)
-        except:
-            font_hdr = font_sub = font_label = font_body = font_small = ImageFont.load_default()
+        panels = []
+        for i, (keys, panel_title) in enumerate(panel_configs, 1):
+            if keys:
+                panels.append(make_panel(i, keys, panel_title))
 
-        tmp = Image.new("RGB", (W, 10))
-        tmp_d = ImageDraw.Draw(tmp)
+        return panels  # Returns list of BytesIO objects
 
-        def wrap(text, font, max_w):
-            words = str(text).split()
-            lines, line = [], ""
-            for w in words:
-                test = (line + " " + w).strip()
-                bbox = tmp_d.textbbox((0,0), test, font=font)
-                if bbox[2] - bbox[0] <= max_w:
-                    line = test
-                else:
-                    if line: lines.append(line)
-                    line = w
-            if line: lines.append(line)
-            return lines
-
-        def text_to_bullets(text):
-            """Convert paragraph text to bullet points."""
-            import re
-            text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
-            text = re.sub(r"\*(.+?)\*", r"\1", text)
-            text = re.sub(r"#{1,6}\s*", "", text)
-            sentences = re.split(r"(?<=[.!?])\s+|\s*[-•]\s*", text)
-            bullets = []
-            for s in sentences:
-                s = s.strip().strip(".")
-                if len(s) > 15:
-                    bullets.append(s)
-            return bullets[:5]
-
-        sections = []
-        current_section = ""
-        current_text = []
-        for line in summary.strip().split("\n"):
-            line = line.strip()
-            if not line:
-                continue
-            if line.startswith(("1.", "2.", "3.", "4.", "5.", "6.", "7.")) or (line.isupper() and len(line) > 3) or (line.endswith(":") and len(line) < 50):
-                if current_section and current_text:
-                    sections.append((current_section.rstrip(":"), " ".join(current_text)))
-                current_section = line.rstrip(":")
-                current_text = []
-            else:
-                current_text.append(line)
-        if current_section and current_text:
-            sections.append((current_section.rstrip(":"), " ".join(current_text)))
-        if not sections:
-            chunks = [summary[i:i+250] for i in range(0, min(len(summary), 1500), 250)]
-            sections = [(f"Key Point {i+1}", c) for i, c in enumerate(chunks[:6])]
-
-        inner_w = W - margin * 2 - 16
-
-        H = 88
-        title_lines = wrap(title, font_label, inner_w - 10)
-        H += 16 + len(title_lines) * 24 + 14
-        for st, sx in sections[:6]:
-            bullets = text_to_bullets(sx)
-            H += 36 + len(bullets) * 22 + 10
-        H += 44
-
-        img = Image.new("RGB", (W, H), color=BG)
-        draw = ImageDraw.Draw(img)
-
-        draw.rectangle([0, 0, W, 88], fill=HDR_BG)
-        draw.text((margin, 16), "BAFNA SECOND BRAIN", fill=HDR_TEXT, font=font_hdr)
-        draw.text((margin, 52), doc_type + "  •  " + datetime.now().strftime("%d %b %Y") + "  •  Powered by Claude AI", fill=HDR_SUB, font=font_sub)
-
-        y = 88
-
-        t_h = 16 + len(title_lines) * 24 + 14
-        draw.rectangle([0, y, W, y + t_h], fill=TITLE_BG)
-        draw.rectangle([0, y, 5, y + t_h], fill=TITLE_BORDER)
-        for i, tl in enumerate(title_lines):
-            draw.text((margin, y + 8 + i * 24), tl, fill=TITLE_TEXT, font=font_label)
-        y += t_h
-        draw.line([(0, y), (W, y)], fill=DIVIDER, width=1)
-
-        for i, (section_title, section_text) in enumerate(sections[:6]):
-            bg_c, acc_c, dark_c = section_styles[i % len(section_styles)]
-            bullets = text_to_bullets(section_text)
-            if not bullets:
-                bullets = [section_text[:100]]
-            sec_h = 36 + len(bullets) * 22 + 10
-            draw.rectangle([0, y, W, y + sec_h], fill=bg_c)
-            draw.rectangle([0, y, 5, y + sec_h], fill=acc_c)
-            draw.text((margin, y + 8), section_title[:55], fill=dark_c, font=font_label)
-            for j, bullet in enumerate(bullets):
-                bx = margin + 10
-                by = y + 30 + j * 22
-                draw.ellipse([bx, by + 5, bx + 7, by + 12], fill=acc_c)
-                bullet_lines = wrap(bullet, font_body, inner_w - 30)
-                draw.text((bx + 14, by), bullet_lines[0] if bullet_lines else bullet[:80], fill=BLACK, font=font_body)
-            y += sec_h
-            draw.line([(0, y), (W, y)], fill=DIVIDER, width=1)
-
-        draw.rectangle([0, y, W, H], fill=FOOTER_BG)
-        draw.text((margin, y + 14), "For educational use only  •  Verify with primary sources  •  Open Obsidian to process", fill=FOOTER_TEXT, font=font_small)
-
-        buf = io.BytesIO()
-        img.save(buf, format="PNG", quality=95)
-        buf.seek(0)
-        return buf
     except Exception as e:
         import traceback; traceback.print_exc()
         print(f"Infographic error: {e}")
-        return None
+        return []
 
 
 def process_text_message(text, chat_id):
@@ -337,9 +360,13 @@ def process_pdf_message(document, chat_id):
     note_filename = re.sub(r"[^a-zA-Z0-9_-]", "_", doc_name) + f"_{timestamp}.md"
     note = "---\ntitle: " + doc_name + "\ntype: pdf-summary\nstatus: unprocessed\ndate_added: " + date_str + "\nsource: Telegram Bot\ntags: [raw, unprocessed, telegram, pdf]\n---\n\n# " + doc_name + "\n\n## Clinical Summary\n" + clinical_summary + "\n\n## Source Document\n![[Assets/" + safe_name + "]]\n\n## Next action\n- [ ] Review summary accuracy\n- [ ] Run Cmd+Shift+G for full guideline extraction\n- [ ] Move to Literature/ after review\n"
     github_commit(note_filename, "raw", note, f"PDF summary: {doc_name}")
-    img_bytes = generate_clinical_infographic(doc_name, clean_markdown(clinical_summary), "PDF Summary")
-    if img_bytes:
-        tg_send_photo(chat_id, img_bytes, caption=f"Clinical Summary: {doc_name}")
+    panels = generate_clinical_infographic(doc_name, clean_markdown(clinical_summary), "PDF Summary")
+    if panels:
+        tg_send_photo(chat_id, panels[0], caption=f"Panel 1/3 — Identity & Executive Summary: {doc_name[:60]}")
+        if len(panels) > 1:
+            tg_send_photo(chat_id, panels[1], caption=f"Panel 2/3 — Diagnosis, Treatment & Indian Practice")
+        if len(panels) > 2:
+            tg_send_photo(chat_id, panels[2], caption=f"Panel 3/3 — OPD Pearls, Controversies & Action Checklist")
     tg_send(chat_id, "PDF Processed\n\nFile: " + safe_name + "\nPDF saved to Assets/\nNote saved to raw/" + note_filename + "\n\nOpen Obsidian and run Cmd+Shift+G for full extraction.")
 
 @app.route("/webhook", methods=["POST"])
